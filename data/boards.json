@@ -1,0 +1,32 @@
+{
+    "boards": [
+        {
+            "id": 1,
+            "name": "IT Projects"
+        },
+        {
+            "id": 2,
+            "name": "School Assignments"
+        }
+    ],
+    "cards": [
+        {
+            "id": 1,
+            "board_id": 1,
+            "title": "Complete SQLite migration",
+            "priority": "high"
+        },
+        {
+            "id": 2,
+            "board_id": 1,
+            "title": "Review database constraints",
+            "priority": "medium"
+        },
+        {
+            "id": 3,
+            "board_id": 2,
+            "title": "Submit Week 6 assignment",
+            "priority": "high"
+        }
+    ]
+}
