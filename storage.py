@@ -1,70 +1,109 @@
-
-import json
+import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 
-DATA_FILE = Path(__file__).parent / "data" / "boards.json"
+DB_FILE = Path(__file__).resolve().parent / "data" / "boards.db"
+
+
+@contextmanager
+def get_connection():
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def load_data():
-    if not DATA_FILE.exists():
-        return {"boards": [], "cards": []}
-
-    with DATA_FILE.open("r", encoding="utf-8") as file:
-        return json.load(file)
+    return {
+        "boards": get_boards(),
+        "cards": get_cards()
+    }
 
 
 def save_data(data):
-    DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with get_connection() as conn:
+        conn.execute("DELETE FROM cards")
+        conn.execute("DELETE FROM boards")
 
-    with DATA_FILE.open("w", encoding="utf-8") as file:
-        json.dump(data, file, indent=4)
+        for board in data["boards"]:
+            conn.execute(
+                "INSERT INTO boards (id, name) VALUES (?, ?)",
+                (board["id"], board["name"])
+            )
+
+        for card in data["cards"]:
+            conn.execute(
+                """
+                INSERT INTO cards (id, board_id, title, priority)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    card["id"],
+                    card["board_id"],
+                    card["title"],
+                    card["priority"]
+                )
+            )
 
 
 def get_boards():
-    return load_data()["boards"]
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT id, name FROM boards ORDER BY id"
+        ).fetchall()
+        return [dict(row) for row in rows]
 
 
 def get_cards(board_id=None):
-    cards = load_data()["cards"]
+    with get_connection() as conn:
+        if board_id is None:
+            rows = conn.execute(
+                "SELECT id, board_id, title, priority FROM cards ORDER BY id"
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT id, board_id, title, priority
+                FROM cards
+                WHERE board_id = ?
+                ORDER BY id
+                """,
+                (board_id,)
+            ).fetchall()
 
-    if board_id is not None:
-        cards = [
-            card for card in cards
-            if card["board_id"] == board_id
-        ]
-
-    return cards
+        return [dict(row) for row in rows]
 
 
 def add_board(name):
-    data = load_data()
-
-    board = {
-        "id": max(
-            [b["id"] for b in data["boards"]],
-            default=0
-        ) + 1,
-        "name": name
-    }
-
-    data["boards"].append(board)
-    save_data(data)
-    return board
+    with get_connection() as conn:
+        cursor = conn.execute(
+            "INSERT INTO boards (name) VALUES (?)",
+            (name,)
+        )
+        return {"id": cursor.lastrowid, "name": name}
 
 
 def add_card(board_id, title, priority="medium"):
-    data = load_data()
+    with get_connection() as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO cards (board_id, title, priority)
+            VALUES (?, ?, ?)
+            """,
+            (board_id, title, priority)
+        )
 
-    card = {
-        "id": max(
-            [c["id"] for c in data["cards"]],
-            default=0
-        ) + 1,
-        "board_id": board_id,
-        "title": title,
-        "priority": priority
-    }
-
-    data["cards"].append(card)
-    save_data(data)
-    return card
+        return {
+            "id": cursor.lastrowid,
+            "board_id": board_id,
+            "title": title,
+            "priority": priority
+        }
